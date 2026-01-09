@@ -74,9 +74,11 @@ jobs:
         id: test-js
         continue-on-error: true
         run: |
+          # Always set default output first
+          echo "js_failed=false" >> $GITHUB_OUTPUT
+
           if [ "${{ steps.find-changed.outputs.js_count }}" = "0" ]; then
             echo "No JavaScript submissions to test." >> $GITHUB_STEP_SUMMARY
-            echo "js_failed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           
@@ -164,9 +166,11 @@ jobs:
         id: test-py
         continue-on-error: true
         run: |
+          # Always set default output first
+          echo "py_failed=false" >> $GITHUB_OUTPUT
+
           if [ "${{ steps.find-changed.outputs.py_count }}" = "0" ]; then
             echo "No Python submissions to test." >> $GITHUB_STEP_SUMMARY
-            echo "py_failed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           
@@ -253,8 +257,13 @@ jobs:
       - name: Check test results
         id: check-results
         run: |
+          # Get counts with defaults
           JS_COUNT="${{ steps.find-changed.outputs.js_count }}"
           PY_COUNT="${{ steps.find-changed.outputs.py_count }}"
+          
+          # Set defaults if empty
+          JS_COUNT=${JS_COUNT:-0}
+          PY_COUNT=${PY_COUNT:-0}
           
           if [ "$JS_COUNT" = "0" ] && [ "$PY_COUNT" = "0" ]; then
             echo "No submissions to test. Skipping test validation."
@@ -262,8 +271,24 @@ jobs:
             exit 0
           fi
 
+          # Get test results with defaults (assume failed if not set and we had submissions)
           JS_FAILED="${{ steps.test-js.outputs.js_failed }}"
           PY_FAILED="${{ steps.test-py.outputs.py_failed }}"
+
+          # If we had submissions but outputs weren't set, that's a failure
+          if [ "$JS_COUNT" != "0" ] && [ -z "$JS_FAILED" ]; then
+            echo "**JavaScript test step failed to complete**" >> $GITHUB_STEP_SUMMARY
+            JS_FAILED="true"
+          fi
+
+          if [ "$PY_COUNT" != "0" ] && [ -z "$PY_FAILED" ]; then
+            echo "**Python test step failed to complete**" >> $GITHUB_STEP_SUMMARY
+            PY_FAILED="true"
+          fi
+
+          # Set defaults for failed status
+          JS_FAILED=${JS_FAILED:-false}
+          PY_FAILED=${PY_FAILED:-false}
 
           if [ "$JS_FAILED" = "true" ] || [ "$PY_FAILED" = "true" ]; then
             echo "**Tests Failed - PR cannot be merged**" >> $GITHUB_STEP_SUMMARY
