@@ -37,28 +37,38 @@ jobs:
           cat changed_files.txt
           
           # Find all minified submissions that were changed or added
-          echo "js_submissions<<EOF" >> $GITHUB_OUTPUT
-          while IFS= read -r file; do
+          JS_FILES=$(while IFS= read -r file; do
             if [[ "$file" == Match*/submissions/*.min.js ]]; then
               echo "$file"
             fi
-          done < changed_files.txt | sort -u >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          done < changed_files.txt | sort -u)
           
-          echo "py_submissions<<EOF" >> $GITHUB_OUTPUT
-          while IFS= read -r file; do
+          PY_FILES=$(while IFS= read -r file; do
             if [[ "$file" == Match*/submissions/*.min.py ]]; then
               echo "$file"
             fi
-          done < changed_files.txt | sort -u >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          done < changed_files.txt | sort -u)
+          
+          # Write to files for later use
+          echo "$JS_FILES" > js_submissions.txt
+          echo "$PY_FILES" > py_submissions.txt
           
           # Count submissions
-          JS_COUNT=$(grep -c "\.min\.js$" changed_files.txt || echo "0")
-          PY_COUNT=$(grep -c "\.min\.py$" changed_files.txt || echo "0")
+          JS_COUNT=$(echo "$JS_FILES" | grep -c . || echo "0")
+          PY_COUNT=$(echo "$PY_FILES" | grep -c . || echo "0")
+          
+          # Handle empty case - ensure at least one line
+          if [ -z "$JS_FILES" ]; then
+            JS_COUNT=0
+          fi
+          if [ -z "$PY_FILES" ]; then
+            PY_COUNT=0
+          fi
           
           echo "js_count=$JS_COUNT" >> $GITHUB_OUTPUT
           echo "py_count=$PY_COUNT" >> $GITHUB_OUTPUT
+          
+          echo "Found $JS_COUNT JS submissions and $PY_COUNT Python submissions"
 
       - name: Test JavaScript submissions
         id: test-js
@@ -109,10 +119,10 @@ jobs:
               actual_normalized=$(echo "$actual_output" | sed 's/[[:space:]]*$//')
               
               if [ "$actual_normalized" = "$expected_normalized" ]; then
-                echo "✅ Test $test_name: PASSED" >> $GITHUB_STEP_SUMMARY
+                echo "Test $test_name: PASSED" >> $GITHUB_STEP_SUMMARY
                 JS_PASSED=$((JS_PASSED + 1))
               else
-                echo "❌ Test $test_name: FAILED" >> $GITHUB_STEP_SUMMARY
+                echo "Test $test_name: FAILED" >> $GITHUB_STEP_SUMMARY
                 echo "" >> $GITHUB_STEP_SUMMARY
                 echo "**Expected:**" >> $GITHUB_STEP_SUMMARY
                 echo '```' >> $GITHUB_STEP_SUMMARY
@@ -140,7 +150,7 @@ jobs:
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
             
-          done <<< "${{ steps.find-changed.outputs.js_submissions }}"
+          done < js_submissions.txt
           
           echo "**Summary:** $JS_PASSED/$JS_TOTAL tests passed, $JS_FAILED failed" >> $GITHUB_STEP_SUMMARY
           
@@ -230,7 +240,7 @@ jobs:
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
             
-          done <<< "${{ steps.find-changed.outputs.py_submissions }}"
+          done < py_submissions.txt
           
           echo "**Summary:** $PY_PASSED/$PY_TOTAL tests passed, $PY_FAILED failed" >> $GITHUB_STEP_SUMMARY
           
