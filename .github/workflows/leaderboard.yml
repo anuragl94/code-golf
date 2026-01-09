@@ -1,6 +1,8 @@
 name: Generate Leaderboard
 
 on:
+  pull_request:
+    types: [closed]
   push:
     branches:
       - main
@@ -10,37 +12,85 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          # For PR events, checkout the merge commit
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
 
       - name: Check if should skip
         id: should-skip
         run: |
-          # Skip if commit message contains [skip ci]
-          if echo "${{ github.event.head_commit.message }}" | grep -q "\[skip ci\]"; then
-            echo "Skipping leaderboard generation (skip ci detected)"
+          # For pull_request events, check if PR was merged (not just closed)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ "${{ github.event.pull_request.merged }}" != "true" ]; then
+              echo "Skipping leaderboard generation (PR was closed but not merged)"
+              echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            # Get files changed in the merged PR using the merge commit
+            MERGE_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            
+            echo "Checking merged PR #${{ github.event.pull_request.number }}"
+            echo "Merge commit: $MERGE_SHA"
+            echo "Base commit: $BASE_SHA"
+            
+            if [ -z "$MERGE_SHA" ] || [ "$MERGE_SHA" = "null" ]; then
+              echo "Warning: No merge commit SHA found, trying HEAD"
+              changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+            else
+              # Get files changed between base and merge commit
+              changed_files=$(git diff --name-only $BASE_SHA $MERGE_SHA 2>/dev/null || echo "")
+            fi
+          else
+            # For push events, check commit message
+            if echo "${{ github.event.head_commit.message }}" | grep -q "\[skip ci\]"; then
+              echo "Skipping leaderboard generation (skip ci detected)"
+              echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            # Check what files were changed in the push
+            changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only origin/main HEAD 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$changed_files" ]; then
+            echo "Skipping leaderboard generation (no files changed detected)"
             echo "skip=true" >> $GITHUB_OUTPUT
             exit 0
           fi
           
+          echo "Changed files:"
+          echo "$changed_files"
+          
           # Check if only leaderboard.json was changed
-          changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only origin/main HEAD 2>/dev/null || echo "")
-          if [ -n "$changed_files" ]; then
-            non_leaderboard=$(echo "$changed_files" | grep -v "^leaderboard.json$" | grep -v "^$" || true)
-            if [ -z "$non_leaderboard" ]; then
-              echo "Skipping leaderboard generation (only leaderboard.json changed)"
-              echo "skip=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
+          non_leaderboard=$(echo "$changed_files" | grep -v "^leaderboard.json$" | grep -v "^$" || true)
+          if [ -z "$non_leaderboard" ]; then
+            echo "Skipping leaderboard generation (only leaderboard.json changed)"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
           
+          # Check if any submission files were changed
+          submission_files=$(echo "$changed_files" | grep -E "Match.*/submissions/.*\.min\.(js|py)$" || true)
+          if [ -z "$submission_files" ]; then
+            echo "Skipping leaderboard generation (no submission files changed)"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Found changed submission files:"
+          echo "$submission_files"
           echo "skip=false" >> $GITHUB_OUTPUT
 
-      - name: Install jq
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
@@ -53,7 +103,7 @@ jobs:
           
           # Create leaderboard structure
           leaderboard='{}'
-          
+
           # Find all match directories
           for match_dir in Match*/; do
             if [ ! -d "$match_dir" ] || [ ! -d "$match_dir/submissions" ]; then continue; fi
@@ -70,7 +120,7 @@ jobs:
               
               username=$(basename "$submission" | sed 's/\.min\.\(js\|py\)$//')
               extension="${submission##*.}"
-              
+
               # Count characters (excluding newlines and trailing whitespace)
               # Read file, remove newlines/carriage returns, trim trailing whitespace, then count
               content=$(cat "$submission" | tr -d '\n\r' | sed 's/[[:space:]]*$//')
@@ -121,11 +171,30 @@ jobs:
           git config --local user.name "GitHub Action"
           
           # Check if leaderboard.json exists and has changes
-          if [ -f "leaderboard.json" ] && [ -n "$(git status --porcelain leaderboard.json 2>/dev/null)" ]; then
-            git add leaderboard.json
-            git commit -m "Update leaderboard [skip ci]"
-            git push
-            echo "Leaderboard updated and pushed"
-          else
-            echo "No changes to leaderboard"
+          if [ ! -f "leaderboard.json" ]; then
+            echo "No leaderboard.json file generated"
+            exit 0
           fi
+
+          # Check if there are actual changes to the file
+          if git diff --quiet HEAD -- leaderboard.json 2>/dev/null; then
+            echo "No changes to leaderboard.json - skipping commit"
+            exit 0
+          fi
+          
+          # Check if changes are meaningful (not just metadata timestamp)
+          # Remove metadata from both versions and compare
+          current_data=$(jq 'del(._metadata)' leaderboard.json 2>/dev/null || echo "{}")
+          if git show HEAD:leaderboard.json > /dev/null 2>&1; then
+            previous_data=$(git show HEAD:leaderboard.json | jq 'del(._metadata)' 2>/dev/null || echo "{}")
+            if [ "$current_data" = "$previous_data" ]; then
+              echo "No meaningful changes to leaderboard (only metadata updated) - skipping commit"
+              exit 0
+            fi
+          fi
+
+          # Commit and push
+          git add leaderboard.json
+          git commit -m "Update leaderboard [skip ci]"
+          git push
+          echo "Leaderboard updated and pushed"
