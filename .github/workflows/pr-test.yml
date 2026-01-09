@@ -251,18 +251,28 @@ jobs:
           fi
 
       - name: Check test results
+        id: check-results
         run: |
           JS_COUNT="${{ steps.find-changed.outputs.js_count }}"
           PY_COUNT="${{ steps.find-changed.outputs.py_count }}"
           
           if [ "$JS_COUNT" = "0" ] && [ "$PY_COUNT" = "0" ]; then
             echo "No submissions to test. Skipping test validation."
+            echo "tests_passed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
-          if [ "${{ steps.test-js.outputs.js_failed }}" = "true" ] || [ "${{ steps.test-py.outputs.py_failed }}" = "true" ]; then
-            echo "Some tests failed. PR cannot be merged."
+
+          JS_FAILED="${{ steps.test-js.outputs.js_failed }}"
+          PY_FAILED="${{ steps.test-py.outputs.py_failed }}"
+
+          if [ "$JS_FAILED" = "true" ] || [ "$PY_FAILED" = "true" ]; then
+            echo "**Tests Failed - PR cannot be merged**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the failing tests before merging this PR." >> $GITHUB_STEP_SUMMARY
+            echo "tests_passed=false" >> $GITHUB_OUTPUT
             exit 1
           fi
           
+          echo "**All tests passed! PR is ready to merge.**" >> $GITHUB_STEP_SUMMARY
+          echo "tests_passed=true" >> $GITHUB_OUTPUT
           echo "All tests passed! PR is ready to merge."
