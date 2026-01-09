@@ -258,14 +258,15 @@ jobs:
         id: check-results
         if: always() && (steps.find-changed.conclusion == 'success' || steps.find-changed.conclusion == 'failure')
         run: |
+          set +e
           JS_COUNT="${{ steps.find-changed.outputs.js_count }}"
           PY_COUNT="${{ steps.find-changed.outputs.py_count }}"
           JS_FAILED="${{ steps.test-js.outputs.js_failed }}"
           PY_FAILED="${{ steps.test-py.outputs.py_failed }}"
-          if [ -z "${JS_COUNT}" ]; then JS_COUNT="0"; fi
-          if [ -z "${PY_COUNT}" ]; then PY_COUNT="0"; fi
-          if [ -z "${JS_FAILED}" ]; then JS_FAILED="false"; fi
-          if [ -z "${PY_FAILED}" ]; then PY_FAILED="false"; fi
+          [ -z "$JS_COUNT" ] && JS_COUNT="0"
+          [ -z "$PY_COUNT" ] && PY_COUNT="0"
+          [ -z "$JS_FAILED" ] && JS_FAILED="false"
+          [ -z "$PY_FAILED" ] && PY_FAILED="false"
           if [ "$JS_COUNT" = "0" ] && [ "$PY_COUNT" = "0" ]; then
             echo "No submissions to test."
             echo "tests_passed=true" >> $GITHUB_OUTPUT
