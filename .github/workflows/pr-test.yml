@@ -288,3 +288,4 @@ jobs:
           fi
           echo "**All tests passed! PR is ready to merge.**" >> $GITHUB_STEP_SUMMARY
           echo "tests_passed=true" >> $GITHUB_OUTPUT
+          exit 0
