@@ -110,17 +110,18 @@ jobs:
               # Read first line as argument
               arg=$(head -n 1 "$test_file")
 
-              # Read remaining lines as expected output (normalize line endings)
-              expected_output=$(tail -n +2 "$test_file" | sed 's/\r$//')
+              # Read remaining lines as expected output
+              expected_output=$(tail -n +2 "$test_file")
 
-              # Run the submission and capture output (normalize line endings)
-              actual_output=$(node -e "eval(require('fs').readFileSync('$submission', 'utf8')); solution($arg)" 2>&1 | sed 's/\r$//')
+              # Run the submission and capture output
+              actual_output=$(node -e "eval(require('fs').readFileSync('$submission', 'utf8')); solution($arg)" 2>&1)
 
-              # Compare outputs (normalize whitespace)
-              expected_normalized=$(echo "$expected_output" | sed 's/[[:space:]]*$//')
-              actual_normalized=$(echo "$actual_output" | sed 's/[[:space:]]*$//')
+              # Write both to temp files for comparison
+              echo "$expected_output" | sed 's/\r$//' > /tmp/expected.txt
+              echo "$actual_output" | sed 's/\r$//' > /tmp/actual.txt
 
-              if [ "$actual_normalized" = "$expected_normalized" ]; then
+              # Compare outputs exactly
+              if diff -q /tmp/expected.txt /tmp/actual.txt > /dev/null 2>&1; then
                 echo "Test $test_name: PASSED" >> $GITHUB_STEP_SUMMARY
                 JS_PASSED=$((JS_PASSED + 1))
               else
@@ -202,17 +203,18 @@ jobs:
               # Read first line as argument
               arg=$(head -n 1 "$test_file")
 
-              # Read remaining lines as expected output (normalize line endings)
-              expected_output=$(tail -n +2 "$test_file" | sed 's/\r$//')
+              # Read remaining lines as expected output
+              expected_output=$(tail -n +2 "$test_file")
 
-              # Run the submission and capture output (normalize line endings)
-              actual_output=$(python3 -c "exec(open('$submission').read()); solution($arg)" 2>&1 | sed 's/\r$//')
+              # Run the submission and capture output
+              actual_output=$(python3 -c "exec(open('$submission').read()); solution($arg)" 2>&1)
 
-              # Compare outputs (normalize whitespace)
-              expected_normalized=$(echo "$expected_output" | sed 's/[[:space:]]*$//')
-              actual_normalized=$(echo "$actual_output" | sed 's/[[:space:]]*$//')
+              # Write both to temp files for comparison
+              echo "$expected_output" | sed 's/\r$//' > /tmp/expected.txt
+              echo "$actual_output" | sed 's/\r$//' > /tmp/actual.txt
 
-              if [ "$actual_normalized" = "$expected_normalized" ]; then
+              # Compare outputs exactly
+              if diff -q /tmp/expected.txt /tmp/actual.txt > /dev/null 2>&1; then
                 echo "Test $test_name: PASSED" >> $GITHUB_STEP_SUMMARY
                 PY_PASSED=$((PY_PASSED + 1))
               else
