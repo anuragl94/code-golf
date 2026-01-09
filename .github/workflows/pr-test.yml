@@ -10,7 +10,7 @@ jobs:
     permissions:
       pull-requests: write
       contents: read
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,31 +32,31 @@ jobs:
         run: |
           # Get list of changed files in the PR
           git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
-          
+
           echo "Changed files:"
           cat changed_files.txt
-          
+
           # Find all minified submissions that were changed or added
           JS_FILES=$(while IFS= read -r file; do
             if [[ "$file" == Match*/submissions/*.min.js ]]; then
               echo "$file"
             fi
           done < changed_files.txt | sort -u)
-          
+
           PY_FILES=$(while IFS= read -r file; do
             if [[ "$file" == Match*/submissions/*.min.py ]]; then
               echo "$file"
             fi
           done < changed_files.txt | sort -u)
-          
+
           # Write to files for later use
           echo "$JS_FILES" > js_submissions.txt
           echo "$PY_FILES" > py_submissions.txt
-          
+
           # Count submissions
           JS_COUNT=$(echo "$JS_FILES" | grep -c . || echo "0")
           PY_COUNT=$(echo "$PY_FILES" | grep -c . || echo "0")
-          
+
           # Handle empty case - ensure at least one line
           if [ -z "$JS_FILES" ]; then
             JS_COUNT=0
@@ -64,10 +64,10 @@ jobs:
           if [ -z "$PY_FILES" ]; then
             PY_COUNT=0
           fi
-          
+
           echo "js_count=$JS_COUNT" >> $GITHUB_OUTPUT
           echo "py_count=$PY_COUNT" >> $GITHUB_OUTPUT
-          
+
           echo "Found $JS_COUNT JS submissions and $PY_COUNT Python submissions"
 
       - name: Test JavaScript submissions
@@ -81,45 +81,45 @@ jobs:
             echo "No JavaScript submissions to test." >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
-          
+
           echo "# Test Results - JavaScript Submissions" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           JS_FAILED=0
           JS_PASSED=0
           JS_TOTAL=0
-          
+
           while IFS= read -r submission; do
             if [ -z "$submission" ] || [ ! -f "$submission" ]; then continue; fi
-            
+
             match_dir=$(dirname "$(dirname "$submission")")
             username=$(basename "$submission" .min.js)
-            
+
             echo "## Testing $submission" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             SUBMISSION_FAILED=0
             TEST_COUNT=0
-            
+
             for test_file in "$match_dir/tests"/*.csv; do
               if [ ! -f "$test_file" ]; then continue; fi
-              
+
               TEST_COUNT=$((TEST_COUNT + 1))
               test_name=$(basename "$test_file" .csv)
-              
+
               # Read first line as argument
               arg=$(head -n 1 "$test_file")
-              
+
               # Read remaining lines as expected output (normalize line endings)
               expected_output=$(tail -n +2 "$test_file" | sed 's/\r$//')
-              
+
               # Run the submission and capture output (normalize line endings)
               actual_output=$(node -e "eval(require('fs').readFileSync('$submission', 'utf8')); solution($arg)" 2>&1 | sed 's/\r$//')
-              
+
               # Compare outputs (normalize whitespace)
               expected_normalized=$(echo "$expected_output" | sed 's/[[:space:]]*$//')
               actual_normalized=$(echo "$actual_output" | sed 's/[[:space:]]*$//')
-              
+
               if [ "$actual_normalized" = "$expected_normalized" ]; then
                 echo "Test $test_name: PASSED" >> $GITHUB_STEP_SUMMARY
                 JS_PASSED=$((JS_PASSED + 1))
@@ -140,9 +140,9 @@ jobs:
                 JS_FAILED=$((JS_FAILED + 1))
               fi
             done
-            
+
             JS_TOTAL=$((JS_TOTAL + TEST_COUNT))
-            
+
             if [ $TEST_COUNT -eq 0 ]; then
               echo "No test files found for this match." >> $GITHUB_STEP_SUMMARY
             elif [ $SUBMISSION_FAILED -eq 0 ]; then
@@ -151,11 +151,11 @@ jobs:
               echo "**$submission: SOME TESTS FAILED**" >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
           done < js_submissions.txt
-          
+
           echo "**Summary:** $JS_PASSED/$JS_TOTAL tests passed, $JS_FAILED failed" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ $JS_FAILED -gt 0 ]; then
             echo "js_failed=true" >> $GITHUB_OUTPUT
           else
@@ -173,45 +173,45 @@ jobs:
             echo "No Python submissions to test." >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
-          
+
           echo "# Test Results - Python Submissions" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           PY_FAILED=0
           PY_PASSED=0
           PY_TOTAL=0
-          
+
           while IFS= read -r submission; do
             if [ -z "$submission" ] || [ ! -f "$submission" ]; then continue; fi
-            
+
             match_dir=$(dirname "$(dirname "$submission")")
             username=$(basename "$submission" .min.py)
-            
+
             echo "## Testing $submission" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             SUBMISSION_FAILED=0
             TEST_COUNT=0
-            
+
             for test_file in "$match_dir/tests"/*.csv; do
               if [ ! -f "$test_file" ]; then continue; fi
-              
+
               TEST_COUNT=$((TEST_COUNT + 1))
               test_name=$(basename "$test_file" .csv)
-              
+
               # Read first line as argument
               arg=$(head -n 1 "$test_file")
-              
+
               # Read remaining lines as expected output (normalize line endings)
               expected_output=$(tail -n +2 "$test_file" | sed 's/\r$//')
-              
+
               # Run the submission and capture output (normalize line endings)
               actual_output=$(python3 -c "exec(open('$submission').read()); solution($arg)" 2>&1 | sed 's/\r$//')
-              
+
               # Compare outputs (normalize whitespace)
               expected_normalized=$(echo "$expected_output" | sed 's/[[:space:]]*$//')
               actual_normalized=$(echo "$actual_output" | sed 's/[[:space:]]*$//')
-              
+
               if [ "$actual_normalized" = "$expected_normalized" ]; then
                 echo "Test $test_name: PASSED" >> $GITHUB_STEP_SUMMARY
                 PY_PASSED=$((PY_PASSED + 1))
@@ -232,9 +232,9 @@ jobs:
                 PY_FAILED=$((PY_FAILED + 1))
               fi
             done
-            
+
             PY_TOTAL=$((PY_TOTAL + TEST_COUNT))
-            
+
             if [ $TEST_COUNT -eq 0 ]; then
               echo "No test files found for this match." >> $GITHUB_STEP_SUMMARY
             elif [ $SUBMISSION_FAILED -eq 0 ]; then
@@ -243,11 +243,11 @@ jobs:
               echo "**$submission: SOME TESTS FAILED**" >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
           done < py_submissions.txt
-          
+
           echo "**Summary:** $PY_PASSED/$PY_TOTAL tests passed, $PY_FAILED failed" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ $PY_FAILED -gt 0 ]; then
             echo "py_failed=true" >> $GITHUB_OUTPUT
           else
@@ -258,55 +258,32 @@ jobs:
         id: check-results
         if: always()
         run: |
-          # Get counts - use empty string if not set, then default to 0
           JS_COUNT="${{ steps.find-changed.outputs.js_count }}"
           PY_COUNT="${{ steps.find-changed.outputs.py_count }}"
-
-          # Set defaults if empty or unset
-          if [ -z "$JS_COUNT" ] || [ "$JS_COUNT" = "null" ]; then
-            JS_COUNT="0"
-          fi
-          if [ -z "$PY_COUNT" ] || [ "$PY_COUNT" = "null" ]; then
-            PY_COUNT="0"
-          fi
-          
+          JS_FAILED="${{ steps.test-js.outputs.js_failed }}"
+          PY_FAILED="${{ steps.test-py.outputs.py_failed }}"
+          [ -z "$JS_COUNT" ] && JS_COUNT="0"
+          [ -z "$PY_COUNT" ] && PY_COUNT="0"
+          [ -z "$JS_FAILED" ] && JS_FAILED="false"
+          [ -z "$PY_FAILED" ] && PY_FAILED="false"
           if [ "$JS_COUNT" = "0" ] && [ "$PY_COUNT" = "0" ]; then
-            echo "No submissions to test. Skipping test validation."
+            echo "No submissions to test."
             echo "tests_passed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
-
-          # Get test results
-          JS_FAILED="${{ steps.test-js.outputs.js_failed }}"
-          PY_FAILED="${{ steps.test-py.outputs.py_failed }}"
-
-          # If we had submissions but outputs weren't set, that's a failure
-          if [ "$JS_COUNT" != "0" ] && ([ -z "$JS_FAILED" ] || [ "$JS_FAILED" = "null" ]); then
+          if [ "$JS_COUNT" != "0" ] && [ "$JS_FAILED" != "true" ] && [ "$JS_FAILED" != "false" ]; then
             echo "**JavaScript test step failed to complete**" >> $GITHUB_STEP_SUMMARY
             JS_FAILED="true"
           fi
-
-          if [ "$PY_COUNT" != "0" ] && ([ -z "$PY_FAILED" ] || [ "$PY_FAILED" = "null" ]); then
+          if [ "$PY_COUNT" != "0" ] && [ "$PY_FAILED" != "true" ] && [ "$PY_FAILED" != "false" ]; then
             echo "**Python test step failed to complete**" >> $GITHUB_STEP_SUMMARY
             PY_FAILED="true"
           fi
-
-          # Set defaults for failed status
-          if [ -z "$JS_FAILED" ] || [ "$JS_FAILED" = "null" ]; then
-            JS_FAILED="false"
-          fi
-          if [ -z "$PY_FAILED" ] || [ "$PY_FAILED" = "null" ]; then
-            PY_FAILED="false"
-          fi
-
           if [ "$JS_FAILED" = "true" ] || [ "$PY_FAILED" = "true" ]; then
             echo "**Tests Failed - PR cannot be merged**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
             echo "Please fix the failing tests before merging this PR." >> $GITHUB_STEP_SUMMARY
             echo "tests_passed=false" >> $GITHUB_OUTPUT
             exit 1
           fi
-          
           echo "**All tests passed! PR is ready to merge.**" >> $GITHUB_STEP_SUMMARY
           echo "tests_passed=true" >> $GITHUB_OUTPUT
-          echo "All tests passed! PR is ready to merge."
