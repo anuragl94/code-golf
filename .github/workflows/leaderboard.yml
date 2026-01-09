@@ -1,0 +1,131 @@
+name: Generate Leaderboard
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  generate-leaderboard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if should skip
+        id: should-skip
+        run: |
+          # Skip if commit message contains [skip ci]
+          if echo "${{ github.event.head_commit.message }}" | grep -q "\[skip ci\]"; then
+            echo "Skipping leaderboard generation (skip ci detected)"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if only leaderboard.json was changed
+          changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only origin/main HEAD 2>/dev/null || echo "")
+          if [ -n "$changed_files" ]; then
+            non_leaderboard=$(echo "$changed_files" | grep -v "^leaderboard.json$" | grep -v "^$" || true)
+            if [ -z "$non_leaderboard" ]; then
+              echo "Skipping leaderboard generation (only leaderboard.json changed)"
+              echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+          
+          echo "skip=false" >> $GITHUB_OUTPUT
+
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Generate leaderboard
+        id: leaderboard
+        if: steps.should-skip.outputs.skip != 'true'
+        run: |
+          echo "Generating leaderboard..."
+          
+          # Create leaderboard structure
+          leaderboard='{}'
+          
+          # Find all match directories
+          for match_dir in Match*/; do
+            if [ ! -d "$match_dir" ] || [ ! -d "$match_dir/submissions" ]; then continue; fi
+            
+            match_name=$(basename "$match_dir")
+            echo "Processing $match_name..."
+            
+            # Initialize match in leaderboard
+            leaderboard=$(echo "$leaderboard" | jq --arg match "$match_name" '. + {($match): {}}')
+            
+            # Find all minified submissions
+            for submission in "$match_dir/submissions"/*.min.js "$match_dir/submissions"/*.min.py; do
+              if [ ! -f "$submission" ]; then continue; fi
+              
+              username=$(basename "$submission" | sed 's/\.min\.\(js\|py\)$//')
+              extension="${submission##*.}"
+              
+              # Count characters (excluding newlines and trailing whitespace)
+              # Read file, remove newlines/carriage returns, trim trailing whitespace, then count
+              content=$(cat "$submission" | tr -d '\n\r' | sed 's/[[:space:]]*$//')
+              char_count=${#content}
+              
+              # Add to leaderboard
+              leaderboard=$(echo "$leaderboard" | jq \
+                --arg match "$match_name" \
+                --arg user "$username" \
+                --arg lang "$extension" \
+                --argjson count "$char_count" \
+                '.[$match][$user] = (.[$match][$user] // {}) | .[$match][$user][$lang] = $count')
+            done
+            
+            # Calculate best score for each user
+            leaderboard=$(echo "$leaderboard" | jq --arg match "$match_name" '
+              .[$match] |= (
+                to_entries | 
+                map(.value.best = ([.value.js // 999999, .value.py // 999999] | min)) |
+                from_entries
+              )
+            ')
+            
+            # Create sorted leaderboard array for this match
+            leaderboard=$(echo "$leaderboard" | jq --arg match "$match_name" '
+              .[$match + "_leaderboard"] = (
+                .[$match] | 
+                to_entries | 
+                map({user: .key, scores: .value, best: .value.best}) |
+                sort_by(.best)
+              )
+            ')
+          done
+          
+          # Add metadata
+          leaderboard=$(echo "$leaderboard" | jq --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. + {_metadata: {generated_at: $date}}')
+          
+          # Save to file with pretty formatting
+          echo "$leaderboard" | jq '.' > leaderboard.json
+          
+          echo "Leaderboard generated:"
+          cat leaderboard.json
+
+      - name: Commit and push leaderboard
+        if: steps.should-skip.outputs.skip != 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Check if leaderboard.json exists and has changes
+          if [ -f "leaderboard.json" ] && [ -n "$(git status --porcelain leaderboard.json 2>/dev/null)" ]; then
+            git add leaderboard.json
+            git commit -m "Update leaderboard [skip ci]"
+            git push
+            echo "Leaderboard updated and pushed"
+          else
+            echo "No changes to leaderboard"
+          fi
