@@ -256,14 +256,19 @@ jobs:
 
       - name: Check test results
         id: check-results
+        if: always()
         run: |
-          # Get counts with defaults
+          # Get counts - use empty string if not set, then default to 0
           JS_COUNT="${{ steps.find-changed.outputs.js_count }}"
           PY_COUNT="${{ steps.find-changed.outputs.py_count }}"
-          
-          # Set defaults if empty
-          JS_COUNT=${JS_COUNT:-0}
-          PY_COUNT=${PY_COUNT:-0}
+
+          # Set defaults if empty or unset
+          if [ -z "$JS_COUNT" ] || [ "$JS_COUNT" = "null" ]; then
+            JS_COUNT="0"
+          fi
+          if [ -z "$PY_COUNT" ] || [ "$PY_COUNT" = "null" ]; then
+            PY_COUNT="0"
+          fi
           
           if [ "$JS_COUNT" = "0" ] && [ "$PY_COUNT" = "0" ]; then
             echo "No submissions to test. Skipping test validation."
@@ -271,24 +276,28 @@ jobs:
             exit 0
           fi
 
-          # Get test results with defaults (assume failed if not set and we had submissions)
+          # Get test results
           JS_FAILED="${{ steps.test-js.outputs.js_failed }}"
           PY_FAILED="${{ steps.test-py.outputs.py_failed }}"
 
           # If we had submissions but outputs weren't set, that's a failure
-          if [ "$JS_COUNT" != "0" ] && [ -z "$JS_FAILED" ]; then
+          if [ "$JS_COUNT" != "0" ] && ([ -z "$JS_FAILED" ] || [ "$JS_FAILED" = "null" ]); then
             echo "**JavaScript test step failed to complete**" >> $GITHUB_STEP_SUMMARY
             JS_FAILED="true"
           fi
 
-          if [ "$PY_COUNT" != "0" ] && [ -z "$PY_FAILED" ]; then
+          if [ "$PY_COUNT" != "0" ] && ([ -z "$PY_FAILED" ] || [ "$PY_FAILED" = "null" ]); then
             echo "**Python test step failed to complete**" >> $GITHUB_STEP_SUMMARY
             PY_FAILED="true"
           fi
 
           # Set defaults for failed status
-          JS_FAILED=${JS_FAILED:-false}
-          PY_FAILED=${PY_FAILED:-false}
+          if [ -z "$JS_FAILED" ] || [ "$JS_FAILED" = "null" ]; then
+            JS_FAILED="false"
+          fi
+          if [ -z "$PY_FAILED" ] || [ "$PY_FAILED" = "null" ]; then
+            PY_FAILED="false"
+          fi
 
           if [ "$JS_FAILED" = "true" ] || [ "$PY_FAILED" = "true" ]; then
             echo "**Tests Failed - PR cannot be merged**" >> $GITHUB_STEP_SUMMARY
